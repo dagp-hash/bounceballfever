@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Ball Brick Bounce Challenge</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the game box and canvas */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+        }
+        #game-container {
+            width: 100%;
+            /* Fixed max-width for the canvas area (Mobile size) */
+            max-width: 450px; 
+            margin: 0 auto;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #gameCanvas {
+            background-color: #161b22; /* Inner box color */
+            border: 4px solid #30363d;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        /* Message box is now visible for GAME OVER */
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 24px;
+            background: rgba(48, 54, 61, 0.95);
+            border-radius: 12px;
+            color: #c9d1d9;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            z-index: 10;
+        }
+        #scoreDisplay {
+            text-shadow: 0 0 5px #4f46e5;
+        }
+        /* Styling for disabled buttons */
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #374151 !important; /* bg-gray-700 */
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="game-container" class="mt-8 relative">
+        <h1 class="text-3xl font-bold text-white mb-6 p-4 text-center">Multi-Ball Brick Bounce Challenge</h1>
+
+        <!-- Canvas dimensions are fixed to mobile size in JavaScript -->
+        <canvas id="gameCanvas" class="shadow-2xl"></canvas>
+        
+        <!-- Score, Time, and Ball Count Display -->
+        <div class="flex justify-between items-center w-full px-4 mt-2 mb-4">
+            <p id="scoreDisplay" class="text-white text-xl font-bold">Score: 0</p>
+            
+            <!-- Live Timer and Difficulty Display -->
+            <div class="flex flex-col items-center">
+                <p id="timerDisplay" class="text-lg font-mono text-gray-400">Time: 00:00:00:00</p>
+                <p id="difficultyDisplay" class="text-sm font-semibold text-gray-400">Level: Starting</p>
+            </div>
+            
+            <p id="ballCountDisplay" class="text-white text-lg">Balls: 0 / 10</p>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3 p-4 w-full justify-center">
+            <button id="startButton" class="px-4 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-300 transform hover:scale-105">
+                Start Game
+            </button>
+            <button id="increaseSpeedButton" class="px-4 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300" disabled>
+                + Speed
+            </button>
+            <button id="decreaseSpeedButton" class="px-4 py-3 bg-amber-500 text-white font-semibold rounded-lg shadow-md hover:bg-amber-600 transition duration-300" disabled>
+                - Speed
+            </button>
+            <!-- UPGRADE BUTTONS -->
+            <button id="upgradeCapacityButton" class="px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-300" disabled>
+                +1 Max Balls (Cost: 1000)
+            </button>
+            <button id="megaBallButton" class="px-4 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-300" disabled>
+                Mega Ball (Cost: 2000)
+            </button>
+        </div>
+        
+        <div id="statusMessage" class="message-box hidden">
+            <h2 class="text-2xl font-bold mb-4" id="messageTitle"></h2>
+            <p class="text-xl" id="messageText"></p>
+            <!-- Game over duration display -->
+            <p class="text-lg font-mono mt-4 text-green-300" id="timeDuration">Duration: 00:00:00:00</p> 
+            <!-- Final Difficulty Display -->
+            <p class="text-lg font-mono mt-2 text-gray-400" id="finalDifficulty"></p>
+        </div>
+    </div>
+
+    <script>
+        // --- Game Variables (Fixed to Mobile Screen Size) ---
+        let CANVAS_WIDTH = 450; 
+        let CANVAS_HEIGHT = 750; 
+        
+        // --- Fixed Constants ---
+        const BALL_RADIUS = 4;
+        
+        // Grid size defines placement possibilities
+        const BRICK_ROW_COUNT = 50; 
+        const BRICK_COLUMN_COUNT = 16; 
+        const BRICK_HEIGHT = 10; 
+        
+        // BRICK COUNT RANGES
+        const MIN_BRICKS = 100;
+        const MAX_BRICKS = 500; 
+        const MIN_MULTIPLIERS = 10; // Fixed range for Multiplier bricks
+        const MAX_MULTIPLIERS = 20;
+
+        // Difficulty Tiers: (Time in MS, Bomb Range, Tailwind Color Class)
+        // Updated based on user request:
+        const DIFFICULTY_TIERS = [
+            // Time up to 00:00:59:00 (59,000 ms)
+            { name: "Very Easy", maxTimeMs: 59000, minBombs: 5, maxBombs: 10, color: "text-green-400" }, 
+            // Time up to 00:05:59:00 (359,000 ms)
+            { name: "Easy", maxTimeMs: 359000, minBombs: 10, maxBombs: 20, color: "text-lime-400" }, 
+            // Time up to 00:15:59:00 (959,000 ms)
+            { name: "Medium", maxTimeMs: 959000, minBombs: 20, maxBombs: 50, color: "text-yellow-400" }, 
+            // Time up to 00:30:59:00 (1,859,000 ms)
+            { name: "Hard", maxTimeMs: 1859000, minBombs: 50, maxBombs: 100, color: "text-orange-400" }, 
+            // Time up to 00:59:00:00 (3,540,000 ms)
+            { name: "Very Hard", maxTimeMs: 3540000, minBombs: 100, maxBombs: 150, color: "text-red-400" }, 
+            // Time above 00:59:00:00 (Infinity)
+            { name: "Super Hard", maxTimeMs: Infinity, minBombs: 151, maxBombs: 200, color: "text-purple-400" },
+        ];
+        
+        const BRICK_PADDING = 5;  
+        const BRICK_OFFSET_TOP = 5; 
+        const BRICK_OFFSET_LEFT = 5;
+        const MAX_SPEED = 10;
+        const MIN_SPEED = 2;
+        const SPEED_FACTOR = 1.1; 
+        
+        // Brick Animation Speed: Bricks revealed per batch and the delay
+        const BRICK_BATCH_SIZE = 8; 
+        const BRICK_REVEAL_DELAY_MS = 250; 
+        
+        // Cost and duration for upgrades
+        const BALL_CAPACITY_COST = 1000;
+        const BALL_LOSS_PENALTY = 1; 
+        
+        const MEGA_BALL_COST = 2000;
+        const MEGA_BALL_RADIUS_MULTIPLIER = 10;
+        const MEGA_BALL_DURATION_MS = 5000;
+
+        const EXPLOSION_LIFE = 6; 
+
+        // Derived constant 
+        let BRICK_WIDTH = 0; 
+        
+        // State variable for max balls capacity
+        let maxBallsCapacity = 10; 
+
+        // Brick Level Definitions
+        const STANDARD_BRICK_LEVELS = [1, 2, 3, 5, 6, 8]; 
+        
+        const BRICK_COLORS = {
+            8: '#ffffff', // White (Regeneration)
+            7: '#991b1b', // Dark Red (Bomb - Level 7)
+            6: '#ec4899', // Pink-500 (5 hits)
+            5: '#9333ea', // Purple-600 (4 hits)
+            4: '#3b82f6', // Blue-500 (Multiplier - Level 4)
+            3: '#ef4444', // Red-500 (3 hits)
+            2: '#f59e0b', // Yellow-500 (2 hits - Level 2)
+            1: '#10b981', // Green-500 (1 hit)
+        };
+        const MAX_DESTRUCTIVE_LEVEL = 6; 
+        const MULTIPLIER_LEVEL = 4; // Blue Multiplier Brick
+        const BOMB_LEVEL = 7; 
+        const REGEN_LEVEL = 8; 
+
+        // --- Game State Variables ---
+        let canvas, ctx;
+        let bricks = []; 
+        let balls = [];
+        let explosions = []; 
+        let regenWaves = []; 
+        let score = 0; 
+        let gameRunning = false;
+        let animationFrameId = null;
+        let totalBricksCount = 0; 
+        let startTime = 0; 
+        let elapsedTime = 0; 
+        let timerIntervalId = null; 
+        
+        // --- Animation State ---
+        let isBrickAnimating = false;
+        let nextBrickIndexToReveal = 0; 
+        let brickRevealInterval = null; 
+        
+        // --- DOM Elements ---
+        const startButton = document.getElementById('startButton');
+        const increaseSpeedButton = document.getElementById('increaseSpeedButton');
+        const decreaseSpeedButton = document.getElementById('decreaseSpeedButton');
+        const upgradeCapacityButton = document.getElementById('upgradeCapacityButton'); 
+        const megaBallButton = document.getElementById('megaBallButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const ballCountDisplay = document.getElementById('ballCountDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay'); 
+        const timeDuration = document.getElementById('timeDuration'); 
+        const finalDifficulty = document.getElementById('finalDifficulty'); // NEW: Final difficulty display
+        const timerDisplay = document.getElementById('timerDisplay'); 
+        const difficultyDisplay = document.getElementById('difficultyDisplay'); 
+
+        // --- Utility Functions ---
+        
+        /**
+         * Formats milliseconds into HH:MM:SS:MS (where MS is hundredths of a second).
+         * @param {number} ms - Milliseconds to format.
+         * @returns {string} Formatted time string.
+         */
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            // Hours calculation is now relevant for the new large time spans
+            const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            // Hundredths of a second
+            const milliseconds = String(Math.floor((ms % 1000) / 10)).padStart(2, '0');
+
+            return `${hours}:${minutes}:${seconds}:${milliseconds}`;
+        }
+        
+        /**
+         * Gets the current difficulty tier based on elapsed time.
+         * @param {number} elapsedMs - The current playing duration in milliseconds.
+         * @returns {object} The current difficulty tier object.
+         */
+        function getCurrentDifficulty(elapsedMs) {
+            // Find the first tier whose maxTimeMs is greater than the elapsed time
+            for (const tier of DIFFICULTY_TIERS) {
+                if (elapsedMs < tier.maxTimeMs) {
+                    return tier;
+                }
+            }
+            // If time exceeds all tiers, use the last (Super Hard, which has maxTimeMs: Infinity)
+            return DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
+        }
+
+        /**
+         * Calculates the required number of bomb bricks for the current game time.
+         * @param {number} elapsedMs - The current playing duration in milliseconds.
+         * @returns {{numBombs: number, difficultyName: string, colorClass: string}} Object containing bomb count and difficulty info.
+         */
+        function calculateBombCount(elapsedMs) {
+            const difficulty = getCurrentDifficulty(elapsedMs);
+            
+            // Random bomb count within the current tier's range. 
+            // If the tier is "Super Hard" (minBombs > 150), this still works.
+            const numBombs = Math.floor(Math.random() * (difficulty.maxBombs - difficulty.minBombs + 1)) + difficulty.minBombs;
+            
+            return { 
+                numBombs, 
+                difficultyName: difficulty.name,
+                colorClass: difficulty.color
+            };
+        }
+
+        /**
+         * Updates the live timer display and difficulty indicator.
+         */
+        function updateTimerDisplay() {
+            if (gameRunning && startTime > 0) {
+                elapsedTime = Date.now() - startTime;
+                const formattedTime = formatTime(elapsedTime);
+                timerDisplay.textContent = `Time: ${formattedTime}`;
+                
+                // Update Difficulty Display in real-time
+                const difficulty = getCurrentDifficulty(elapsedTime);
+                difficultyDisplay.textContent = `Level: ${difficulty.name}`;
+                // Set the class for color and font styles
+                difficultyDisplay.className = `text-sm font-mono font-semibold ${difficulty.color}`; 
+            }
+        }
+        
+        /**
+         * Updates the ball count display on the UI.
+         */
+        function updateBallCountDisplay() {
+            // Count non-mega balls against capacity
+            const regularBalls = balls.filter(ball => !ball.isMega).length;
+            ballCountDisplay.textContent = `Balls: ${regularBalls} / ${maxBallsCapacity}`;
+        }
+        
+        /**
+         * Updates the score display on the UI.
+         */
+        function updateScoreDisplay() {
+            scoreDisplay.textContent = `Score: ${score}`;
+        }
+        
+        /**
+         * Manages the enabled/disabled state of all control buttons.
+         */
+        function checkUpgradeButtonState() {
+            // Speed controls are only enabled when the game is running 
+            increaseSpeedButton.disabled = !gameRunning;
+            decreaseSpeedButton.disabled = !gameRunning;
+
+            // Capacity Upgrade Button
+            upgradeCapacityButton.disabled = !(score >= BALL_CAPACITY_COST && gameRunning);
+            
+            // Mega Ball Button
+            megaBallButton.disabled = !(score >= MEGA_BALL_COST && gameRunning);
+
+            // Start/Restart Button (only available when game is NOT running)
+            startButton.disabled = gameRunning;
+            if (gameRunning) {
+                 startButton.classList.add('opacity-50', 'cursor-not-allowed', 'bg-gray-700');
+                 startButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'transform', 'hover:scale-105');
+            } else {
+                 startButton.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-gray-700');
+                 startButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'transform', 'hover:scale-105');
+            }
+        }
+
+        /**
+         * Sets the fixed canvas size and calculates brick dimensions.
+         */
+        function setFixedCanvasSize() {
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            BRICK_WIDTH = (CANVAS_WIDTH / BRICK_COLUMN_COUNT) - BRICK_PADDING - (BRICK_OFFSET_LEFT * 2 / BRICK_COLUMN_COUNT);
+        }
+
+        /**
+         * Generates a new, randomized layout of bricks and prepares the animation.
+         */
+        function generateBricks() {
+            bricks = [];
+            totalBricksCount = 0;
+            
+            const allPossiblePositions = [];
+            for (let c = 0; c < BRICK_COLUMN_COUNT; c++) {
+                for (let r = 0; r < BRICK_ROW_COUNT; r++) {
+                    const brickX = (c * (BRICK_WIDTH + BRICK_PADDING)) + BRICK_OFFSET_LEFT;
+                    const brickY = (r * (BRICK_HEIGHT + BRICK_PADDING)) + BRICK_OFFSET_TOP;
+                    allPossiblePositions.push({ c, r, x: brickX, y: brickY, active: true });
+                }
+            }
+            
+            // 1. Determine total brick count (100-500)
+            const targetTotalBricks = Math.floor(Math.random() * (MAX_BRICKS - MIN_BRICKS + 1)) + MIN_BRICKS;
+
+            // Shuffle all positions randomly
+            for (let i = allPossiblePositions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allPossiblePositions[i], allPossiblePositions[j]] = [allPossiblePositions[j], allPossiblePositions[i]];
+            }
+
+            const selectedPositions = allPossiblePositions.slice(0, targetTotalBricks);
+            let availableIndices = Array.from({ length: selectedPositions.length }, (_, i) => i);
+            
+            // 2. Determine Special Brick Counts based on difficulty
+            
+            // Calculate elapsed time (0 if game hasn't started yet)
+            const elapsedMs = gameRunning ? Date.now() - startTime : 0; 
+            const { numBombs } = calculateBombCount(elapsedMs);
+            
+            // Ensure target bomb count does not exceed the total number of bricks
+            const targetBombCount = Math.min(numBombs, selectedPositions.length); 
+
+            let targetMultiplierCount = Math.floor(Math.random() * (MAX_MULTIPLIERS - MIN_MULTIPLIERS + 1)) + MIN_MULTIPLIERS;
+            // Ensure multiplier count doesn't exceed remaining slots
+            targetMultiplierCount = Math.min(targetMultiplierCount, selectedPositions.length - targetBombCount);
+
+
+            // 3. Explicitly assign 1 to 3 REGEN bricks (Level 8)
+            const regenBrickCount = Math.floor(Math.random() * 3) + 1; 
+            
+            const regenIndices = [];
+            while (regenIndices.length < regenBrickCount) {
+                const randomIndex = Math.floor(Math.random() * selectedPositions.length);
+                if (!regenIndices.includes(randomIndex)) {
+                    regenIndices.push(randomIndex);
+                }
+            }
+            
+            // Remove regen indices from available pool
+            availableIndices = availableIndices.filter(i => !regenIndices.includes(i));
+            
+            // Assign BOMB bricks (Level 7)
+            const bombIndices = [];
+            while (bombIndices.length < targetBombCount && availableIndices.length > 0) {
+                const randomIndex = Math.floor(Math.random() * availableIndices.length);
+                // splice removes the element at randomIndex and returns an array, [0] gets the value
+                bombIndices.push(availableIndices.splice(randomIndex, 1)[0]); 
+            }
+
+            // Assign MULTIPLIER bricks (Level 4)
+            const multiplierIndices = [];
+            while (multiplierIndices.length < targetMultiplierCount && availableIndices.length > 0) {
+                const randomIndex = Math.floor(Math.random() * availableIndices.length);
+                multiplierIndices.push(availableIndices.splice(randomIndex, 1)[0]);
+            }
+
+            // Combined list of standard destructive levels (1, 2, 3, 5, 6)
+            const standardLevels = STANDARD_BRICK_LEVELS.filter(l => l !== REGEN_LEVEL);
+
+            // 4. Finalize brick objects with levels
+            for (let i = 0; i < selectedPositions.length; i++) {
+                const pos = selectedPositions[i];
+                let initialLevel;
+
+                if (regenIndices.includes(i)) {
+                    initialLevel = REGEN_LEVEL;
+                } else if (bombIndices.includes(i)) {
+                    initialLevel = BOMB_LEVEL;
+                } else if (multiplierIndices.includes(i)) {
+                    initialLevel = MULTIPLIER_LEVEL;
+                } else {
+                    // Assign a standard destructive brick
+                    initialLevel = standardLevels[Math.floor(Math.random() * standardLevels.length)];
+                }
+
+                bricks.push({ ...pos, level: initialLevel });
+
+                // Update total destructive count (Levels 1, 2, 3, 4, 5, 6)
+                if (initialLevel >= 1 && initialLevel <= MAX_DESTRUCTIVE_LEVEL) {
+                    totalBricksCount++;
+                }
+            }
+            
+            // 5. Start the animation state
+            nextBrickIndexToReveal = 0;
+            isBrickAnimating = true;
+
+            // Clear any existing interval before starting a new one
+            if (brickRevealInterval) {
+                clearInterval(brickRevealInterval);
+            }
+            
+            // Start the timed reveal process (250ms delay between batches)
+            brickRevealInterval = setInterval(revealNextBrickBatch, BRICK_REVEAL_DELAY_MS);
+        }
+
+        /**
+         * Reveals the next batch of bricks after a fixed delay.
+         */
+        function revealNextBrickBatch() {
+            if (!isBrickAnimating || nextBrickIndexToReveal >= bricks.length) {
+                // Done animating or shouldn't be running
+                clearInterval(brickRevealInterval);
+                brickRevealInterval = null;
+                isBrickAnimating = false;
+                return;
+            }
+
+            nextBrickIndexToReveal += BRICK_BATCH_SIZE;
+
+            if (nextBrickIndexToReveal >= bricks.length) {
+                nextBrickIndexToReveal = bricks.length;
+                clearInterval(brickRevealInterval);
+                brickRevealInterval = null;
+                isBrickAnimating = false;
+            }
+        }
+
+        // --- Initialization ---
+        window.onload = function() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            setFixedCanvasSize(); 
+
+            startButton.addEventListener('click', initializeGame);
+            increaseSpeedButton.addEventListener('click', () => changeSpeed(SPEED_FACTOR));
+            decreaseSpeedButton.addEventListener('click', () => changeSpeed(1 / SPEED_FACTOR));
+            upgradeCapacityButton.addEventListener('click', upgradeMaxBalls);
+            megaBallButton.addEventListener('click', buyMegaBall);
+            
+            resetGame();
+            draw();
+            updateBallCountDisplay(); 
+            updateScoreDisplay(); 
+            checkUpgradeButtonState(); 
+        };
+        
+        /**
+         * Increases the maximum ball capacity for a cost.
+         */
+        function upgradeMaxBalls() {
+            if (score >= BALL_CAPACITY_COST) {
+                score -= BALL_CAPACITY_COST;
+                maxBallsCapacity += 1;
+                updateScoreDisplay();
+                updateBallCountDisplay();
+                checkUpgradeButtonState();
+            }
+        }
+        
+        /**
+         * Creates a temporary Mega Ball for a cost.
+         */
+        function buyMegaBall() {
+            if (score >= MEGA_BALL_COST && gameRunning) {
+                score -= MEGA_BALL_COST;
+                updateScoreDisplay();
+                
+                // Create a large ball with special properties
+                createNewBall(true); 
+                
+                checkUpgradeButtonState();
+            }
+        }
+
+
+        /**
+         * Resets the game state, ball, and bricks.
+         */
+        function resetGame() {
+            balls = [];
+            explosions = []; 
+            regenWaves = [];
+            score = 0; 
+            maxBallsCapacity = 10; // Reset capacity
+            
+            setFixedCanvasSize(); 
+
+            if (brickRevealInterval) {
+                clearInterval(brickRevealInterval);
+                brickRevealInterval = null;
+            }
+            
+            // Stop the live timer interval if it's running
+            if (timerIntervalId) {
+                clearInterval(timerIntervalId);
+                timerIntervalId = null;
+            }
+            timerDisplay.textContent = `Time: 00:00:00:00`;
+            difficultyDisplay.textContent = `Level: Starting`;
+            difficultyDisplay.className = `text-sm font-mono font-semibold text-gray-400`;
+            finalDifficulty.textContent = ''; // Clear final difficulty message
+
+            // Initial generation uses 0 elapsed time, placing it in 'Very Easy' tier
+            generateBricks();
+            // Game is not running yet, animation starts, balls created on startButton click
+        }
+
+        /**
+         * Creates a new ball at a random starting location with random speed.
+         * Used for the initial ball and bought Mega Balls.
+         * @param {boolean} isMega - True if the ball should be a Mega Ball.
+         * @returns {boolean} True if a new ball was created, false otherwise.
+         */
+        function createNewBall(isMega = false) {
+            let radius = BALL_RADIUS;
+            let expirationTime = 0;
+            
+            if (isMega) {
+                // Mega balls do not count towards the capacity limit
+                radius = BALL_RADIUS * MEGA_BALL_RADIUS_MULTIPLIER;
+                expirationTime = Date.now() + MEGA_BALL_DURATION_MS;
+            } else if (balls.filter(ball => !ball.isMega).length >= maxBallsCapacity) {
+                return false;
+            }
+
+            // Random position inside the canvas boundary, considering the ball's radius
+            const r = isMega ? radius : BALL_RADIUS;
+            const x = r + Math.random() * (CANVAS_WIDTH - 2 * r);
+            const y = r + Math.random() * (CANVAS_HEIGHT - 2 * r);
+            
+            // Random initial velocity (minimum speed of 4, maximum of 5)
+            const initialSpeed = 4;
+            const dx = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1 + initialSpeed);
+            const dy = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1 + initialSpeed);
+
+            balls.push({ x, y, dx, dy, radius, isMega, expirationTime });
+            updateBallCountDisplay(); 
+            return true;
+        }
+
+        /**
+         * Starts the game/simulation.
+         */
+        function initializeGame() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            // If starting from game over, reset completely and start the timer
+            if (!gameRunning) {
+                resetGame(); 
+                createNewBall(); 
+                startTime = Date.now(); // Record game start time
+                
+                // Start real-time timer update
+                if (timerIntervalId) clearInterval(timerIntervalId);
+                timerIntervalId = setInterval(updateTimerDisplay, 100); // Update every 100ms
+                updateTimerDisplay(); // Initial update
+            }
+            
+            gameRunning = true;
+            statusMessage.classList.add('hidden');
+            startButton.textContent = 'Restart Game';
+            
+            gameLoop();
+        }
+        
+        /**
+         * The main game loop function.
+         */
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            draw();
+            
+            updateSimulation(); // Ball movement always runs
+            updateExplosions(); 
+            updateRegenWaves(); // Update the regeneration animation
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+        
+        /**
+         * Adjusts the speed of all active balls.
+         */
+        function changeSpeed(multiplier) {
+            balls.forEach(ball => {
+                const currentSpeedSq = ball.dx * ball.dx + ball.dy * ball.dy;
+                const currentSpeed = Math.sqrt(currentSpeedSq);
+                let targetSpeed = currentSpeed * multiplier;
+
+                targetSpeed = Math.max(MIN_SPEED, Math.min(MAX_SPEED, targetSpeed));
+                
+                const actualMultiplier = targetSpeed / currentSpeed;
+
+                if (actualMultiplier !== 1) {
+                    ball.dx *= actualMultiplier;
+                    ball.dy *= actualMultiplier;
+                }
+            });
+        }
+
+        /**
+         * Checks for collision between the ball and a brick using bounding box logic.
+         */
+        function checkCollision(b, r) {
+            const distX = Math.abs(b.x - r.x - BRICK_WIDTH / 2);
+            const distY = Math.abs(b.y - r.y - BRICK_HEIGHT / 2);
+
+            if (distX > (BRICK_WIDTH / 2 + b.radius)) return false;
+            if (distY > (BRICK_HEIGHT / 2 + b.radius)) return false;
+
+            if (distX <= (BRICK_WIDTH / 2)) return true; 
+            if (distY <= (BRICK_HEIGHT / 2)) return true;
+
+            const dx = distX - BRICK_WIDTH / 2;
+            const dy = distY - BRICK_HEIGHT / 2;
+            return (dx * dx + dy * dy <= (b.radius * b.radius));
+        }
+        
+        /**
+         * Checks if the game has ended (by clearing bricks, losing all balls, or hitting negative score).
+         */
+        function checkIfGameOver() {
+            // Check for score loss (negative number only)
+            if (score < 0 && gameRunning) {
+                 endGame("GAME OVER: Score Depleted", `Your score dropped below zero (${score})!`);
+                 return true;
+            }
+
+            // Check for ball loss (only considering non-mega balls for game end)
+            const regularBalls = balls.filter(ball => !ball.isMega);
+            if (regularBalls.length === 0 && balls.length === 0) {
+                endGame("Out of Balls", `You ran out of balls! Final Score: ${score}`);
+                return true;
+            }
+            
+            // Check for victory condition (clearing all destructive bricks)
+            if (totalBricksCount <= 0 && !isBrickAnimating) {
+                endGame("VICTORY!", `All destructive bricks cleared! Final Score: ${score}`);
+                return true;
+            }
+            return false;
+        }
+
+
+        /**
+         * Updates ball positions and handles all continuous bouncing and brick hits.
+         */
+        function updateSimulation() {
+            updateBallCountDisplay();
+            updateScoreDisplay();
+            checkUpgradeButtonState(); 
+            
+            if (checkIfGameOver()) return; 
+
+            // Loop backwards to allow safe removal of balls if they hit a bomb brick or expire
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
+                
+                // 1a. Mega Ball Expiration Check
+                if (ball.isMega && Date.now() >= ball.expirationTime) {
+                    balls.splice(i, 1);
+                    continue; // Skip the rest of the loop for this ball
+                }
+
+                // 1b. Move the ball
+                ball.x += ball.dx;
+                ball.y += ball.dy;
+
+                // 2. Ball-Wall Collision Detection
+                
+                // Left/Right Walls
+                if (ball.x + ball.dx > CANVAS_WIDTH - ball.radius || ball.x + ball.dx < ball.radius) {
+                    ball.dx = -ball.dx;
+                }
+
+                // Top/Bottom Walls
+                if (ball.y + ball.dy > CANVAS_HEIGHT - ball.radius || ball.y + ball.dy < ball.radius) {
+                    ball.dy = -ball.dy;
+                } 
+
+                // 3. Ball-Brick Collision Detection
+                // Only check collision against bricks that have been revealed
+                for (let j = Math.min(bricks.length - 1, nextBrickIndexToReveal - 1); j >= 0; j--) {
+                    const brick = bricks[j];
+                    if (brick.level > 0) {
+                        const brickRect = { x: brick.x, y: brick.y, width: BRICK_WIDTH, height: BRICK_HEIGHT };
+
+                        if (checkCollision(ball, brickRect)) {
+                            // Add explosion animation at the point of impact
+                            explosions.push({ x: ball.x, y: ball.y, life: EXPLOSION_LIFE });
+
+                            // Reverse vertical direction (Standard physics reaction)
+                            ball.dy = -ball.dy; 
+                            
+                            // Award 1 point for the hit, unless it's the White Regen brick
+                            if (brick.level !== REGEN_LEVEL) {
+                                score += 1;
+                            }
+                            
+                            // --- Special Brick Logic ---
+
+                            if (brick.level === BOMB_LEVEL) { // Dark Red Bomb Brick (Level 7)
+                                if (!ball.isMega) {
+                                    // Regular Ball Logic: Destroy brick, apply penalty, destroy ball
+                                    score -= BALL_LOSS_PENALTY; 
+                                    balls.splice(i, 1);
+                                    i--; // Since we removed a ball, decrement the outer loop index
+                                }
+                                brick.level = 0; 
+                            } else if (brick.level === REGEN_LEVEL) { // White Regeneration Brick (Level 8)
+                                // 1. Create the animation wave
+                                const brickCenterX = brick.x + BRICK_WIDTH / 2;
+                                const brickCenterY = brick.y + BRICK_HEIGHT / 2;
+                                // The maximum radius is the distance to the farthest corner from the collision point
+                                const distToCorner = Math.sqrt(
+                                    Math.max(brickCenterX, CANVAS_WIDTH - brickCenterX) ** 2 +
+                                    Math.max(brickCenterY, CANVAS_HEIGHT - brickCenterY) ** 2
+                                );
+                                regenWaves.push({ 
+                                    x: brickCenterX, 
+                                    y: brickCenterY, 
+                                    radius: 0, 
+                                    maxRadius: distToCorner,
+                                    speed: 25 
+                                });
+
+                                // 2. Perform the regeneration
+                                brick.level = 0; 
+                                generateBricks(); // REGENERATE THE ENTIRE BOARD (starts new timer animation)
+                                // Stop processing collisions for this ball immediately as the board changed
+                                j = -1; 
+                            } else if (brick.level === MULTIPLIER_LEVEL) { // Blue Multiplier Brick (Level 4)
+                                if (!ball.isMega) {
+                                    // Regular Ball Logic: Create new ball with opposite trajectory
+                                    if (balls.filter(b => !b.isMega).length < maxBallsCapacity) {
+                                        const newBall = {
+                                            x: ball.x, 
+                                            y: ball.y,
+                                            dx: -ball.dx, 
+                                            dy: -ball.dy,
+                                            radius: BALL_RADIUS,
+                                            isMega: false,
+                                            expirationTime: 0,
+                                        };
+                                        balls.push(newBall);
+                                        updateBallCountDisplay();
+                                    }
+                                }
+                                brick.level = 0; // Destroy brick
+                                totalBricksCount--; 
+                            } else {
+                                // Standard Destructive Bricks (Levels 1, 2, 3, 5, 6)
+                                brick.level--;
+                                if (brick.level === 0) {
+                                    totalBricksCount--;
+                                }
+                            }
+                            // Regardless of outcome, collision is processed, break inner loop
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            // Remove all bricks with level 0 that have already been revealed
+            bricks = bricks.filter(b => b.level > 0);
+            
+            // Adjust the reveal index if bricks were removed during collision
+            if (isBrickAnimating && nextBrickIndexToReveal > bricks.length) {
+                nextBrickIndexToReveal = bricks.length;
+            } else if (!isBrickAnimating && bricks.length === nextBrickIndexToReveal) {
+                // If animation is over, ensure the index is correct
+                nextBrickIndexToReveal = bricks.length;
+            }
+        }
+        
+        /**
+         * Updates the life cycle of all explosion animations.
+         */
+        function updateExplosions() {
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].life--;
+                if (explosions[i].life <= 0) {
+                    explosions.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * Updates the state of the regeneration wave animations.
+         */
+        function updateRegenWaves() {
+            for (let i = regenWaves.length - 1; i >= 0; i--) {
+                const wave = regenWaves[i];
+                wave.radius += wave.speed;
+                // Remove the wave once it has passed the maximum boundary
+                if (wave.radius > wave.maxRadius) {
+                    regenWaves.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * Ends the game and displays the final message, including the last difficulty level reached.
+         */
+        function endGame(title, text) {
+            gameRunning = false;
+            isBrickAnimating = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            if (brickRevealInterval) {
+                clearInterval(brickRevealInterval);
+            }
+            
+            // --- Stop and Finalize Timer & Difficulty ---
+            if (timerIntervalId) {
+                clearInterval(timerIntervalId); // Stop the live interval
+                timerIntervalId = null;
+            }
+
+            if (startTime > 0) {
+                elapsedTime = Date.now() - startTime;
+                const formattedTime = formatTime(elapsedTime);
+                timeDuration.textContent = `Duration: ${formattedTime}`; // Set the final duration in the message box
+                
+                // Get the final difficulty level based on the total elapsed time
+                const finalDifficultyTier = getCurrentDifficulty(elapsedTime);
+                finalDifficulty.textContent = `Difficulty Reached: ${finalDifficultyTier.name}`;
+                finalDifficulty.className = `text-lg font-mono mt-2 ${finalDifficultyTier.color}`; // Apply color class
+            } else {
+                timeDuration.textContent = `Duration: 00:00:00:00`;
+                finalDifficulty.textContent = `Difficulty Reached: N/A`;
+                finalDifficulty.className = `text-lg font-mono mt-2 text-gray-400`;
+            }
+            // ---------------------------------------------
+
+            // Stop the balls from moving immediately
+            balls.forEach(ball => { ball.dx = 0; ball.dy = 0; });
+
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            
+            statusMessage.classList.remove('hidden');
+            startButton.textContent = 'Play Again';
+            
+            checkUpgradeButtonState(); // Enable Restart button
+        }
+
+
+        // --- Drawing Functions ---
+
+        /**
+         * Draws all active balls on the canvas.
+         */
+        function drawBall(ball) {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            
+            // Use light green for Mega Ball, white for others
+            ctx.fillStyle = ball.isMega ? '#84cc16' : "#ffffff"; 
+
+            ctx.shadowColor = ball.isMega ? '#84cc16' : '#4f46e5';
+            ctx.shadowBlur = ball.isMega ? 15 : 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
+        }
+
+        /**
+         * Draws all bricks on the canvas up to the nextBrickIndexToReveal.
+         */
+        function drawBricks() {
+            // Only draw the currently revealed bricks
+            for (let i = 0; i < Math.min(bricks.length, nextBrickIndexToReveal); i++) {
+                const brick = bricks[i];
+                if (brick.level > 0) {
+                    ctx.fillStyle = BRICK_COLORS[brick.level];
+                    ctx.fillRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT);
+
+                    ctx.strokeStyle = '#30363d';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT);
+                }
+            }
+        }
+
+        /**
+         * Draws the two-frame explosion animations.
+         */
+        function drawExplosions() {
+            explosions.forEach(exp => {
+                // frame 0-2 (life 6, 5, 4) is Frame 1.
+                // frame 3-5 (life 3, 2, 1) is Frame 2.
+                const frame = EXPLOSION_LIFE - exp.life; 
+                
+                ctx.beginPath();
+                if (frame < 3) {
+                    // Frame 1: Large, bright, yellow/orange
+                    ctx.arc(exp.x, exp.y, BALL_RADIUS * 3, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 165, 0, 0.8)'; // Bright Orange
+                } else {
+                    // Frame 2: Smaller, dimmer, red
+                    ctx.arc(exp.x, exp.y, BALL_RADIUS * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 69, 0, 0.6)'; // Red-Orange
+                }
+                ctx.fill();
+                ctx.closePath();
+            });
+        }
+        
+        /**
+         * Draws the regeneration wave animation.
+         */
+        function drawRegenWaves() {
+            regenWaves.forEach(wave => {
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
+                
+                // Calculate opacity and thickness based on radius progression
+                const progress = wave.radius / wave.maxRadius;
+                // Fade out quickly (1 at start, 0 at 50% progress)
+                const opacity = Math.max(0, 1 - progress * 2); 
+                
+                ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                // Start thick, end thin
+                ctx.lineWidth = 3 + (1 - progress) * 5; 
+                ctx.stroke();
+                ctx.closePath();
+            });
+        }
+
+
+        /**
+         * Clears the canvas and draws all simulation elements.
+         */
+        function draw() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            // Draw waves first so they appear behind the bricks and balls
+            drawRegenWaves(); 
+            drawBricks();
+            balls.forEach(drawBall); 
+            drawExplosions(); 
+        }
+    </script>
+</body>
+</html>
