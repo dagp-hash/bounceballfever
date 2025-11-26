@@ -61,7 +61,99 @@
     </style>
 </head>
 <body class="p-4 md:p-8">
+    <!-- Firebase Imports (Module Script) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, signInAnonymously, signInWithCustomToken, setPersistence, browserSessionPersistence 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, collection, query, orderBy, limit, getDocs, addDoc, setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Expose Firebase services globally for use in the standard script below
+        window.firebaseApp = initializeApp(firebaseConfig);
+        window.db = getFirestore(window.firebaseApp);
+        window.auth = getAuth(window.firebaseApp);
+
+        // Set logging for debugging
+        setLogLevel('error');
+        
+        // Public Collection Path for High Scores
+        window.HIGH_SCORES_PATH = `artifacts/${appId}/public/data/highscores`;
+
+        /**
+         * Authenticates the user using the provided token or anonymously.
+         */
+        window.authenticateUser = async function() {
+            try {
+                // Ensure persistence is set to session (useful for temporary environment)
+                await setPersistence(window.auth, browserSessionPersistence);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(window.auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(window.auth);
+                }
+                console.log("Firebase Auth successful. UID:", window.auth.currentUser?.uid);
+                return window.auth.currentUser;
+            } catch (error) {
+                console.error("Firebase Auth failed:", error);
+                // Return null or throw error if auth is critical
+                return null;
+            }
+        }
+        
+        /**
+         * Fetches the top 5 high scores sorted by time played (longest).
+         * @returns {Promise<Array>} List of high score objects.
+         */
+        window.fetchHighScores = async function() {
+            try {
+                const q = query(
+                    collection(window.db, window.HIGH_SCORES_PATH),
+                    // IMPORTANT: Sorting by 'timePlayedMs' desc (longest time played)
+                    orderBy('timePlayedMs', 'desc'), 
+                    limit(5)
+                );
+                const querySnapshot = await getDocs(q);
+                const scores = [];
+                querySnapshot.forEach((doc) => {
+                    scores.push({ id: doc.id, ...doc.data() });
+                });
+                return scores;
+            } catch (error) {
+                console.error("Error fetching high scores:", error);
+                return [];
+            }
+        }
+
+        /**
+         * Submits a new high score entry.
+         * @param {string} nickname - Player's chosen nickname.
+         * @param {number} finalScore - The final game score.
+         * @param {number} timePlayedMs - The total time played in milliseconds.
+         */
+        window.submitHighScore = async function(nickname, finalScore, timePlayedMs) {
+            try {
+                await addDoc(collection(window.db, window.HIGH_SCORES_PATH), {
+                    nickname: nickname,
+                    score: finalScore,
+                    timePlayedMs: timePlayedMs,
+                    date: Date.now()
+                });
+                console.log("High score submitted successfully.");
+            } catch (error) {
+                console.error("Error submitting high score:", error);
+            }
+        }
+    </script>
+    
     <div id="game-container" class="mt-8 relative">
         <h1 class="text-3xl font-bold text-white mb-6 p-4 text-center">BOUNCE BALL FEVER!</h1>
 
@@ -101,14 +193,26 @@
             </button>
         </div>
         
-        <!-- GAME OVER / Status Message Box -->
+        <!-- GAME OVER / Nickname Submission / Status Message Box -->
         <div id="statusMessage" class="overlay-box hidden">
             <div class="max-w-xs md:max-w-md">
                 <h2 class="text-3xl font-bold mb-4" id="messageTitle"></h2>
                 <p class="text-xl mb-4" id="messageText"></p>
+                
+                <!-- Nickname Input Section (Hidden initially) -->
+                <div id="nicknameInputSection" class="hidden my-4 p-4 bg-gray-700 rounded-lg">
+                    <p class="mb-3 text-lg font-semibold">Enter your nickname for the leaderboard!</p>
+                    <input type="text" id="nicknameInput" maxlength="15" placeholder="Nickname (max 15 chars)" 
+                           class="w-full p-2 rounded text-gray-900 bg-gray-100 placeholder-gray-500 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button id="submitNicknameButton" class="mt-4 px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-xl hover:bg-green-700 transition duration-300">
+                        Submit Score
+                    </button>
+                </div>
+                
                 <p class="text-lg font-mono mt-4 text-green-300" id="timeDuration">Duration: 00:00:00:00</p> 
                 <p class="text-lg font-mono mt-2 text-gray-400" id="finalDifficulty"></p>
-                <button id="restartButton" class="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-xl hover:bg-indigo-700 transition duration-300">
+
+                <button id="restartButton" class="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-xl hover:bg-indigo-700 transition duration-300 hidden">
                     Play Again
                 </button>
             </div>
@@ -124,11 +228,17 @@
                 <ul class="list-disc list-inside text-left mx-auto mb-6 space-y-2 text-md">
                     <li class="text-red-400">The **glowing red obstacle** will destroy the ball!</li>
                     <li class="text-blue-400">The **blue obstacle** will multiple the ball!</li>
+                    <li class="text-white">The **white obstacle** will rebuild the obstacles!</li>
                     <li class="text-yellow-400">Activate **FEVER!** for temporary power.</li>
                 </ul>
-                <p class="text-sm mt-8 text-gray-500">
-                    Game Developed by Gemini AI, Game Ideas by D.Agp
-                </p>
+                
+                <div class="text-center mt-6 p-3 bg-gray-700 rounded-lg">
+                    <h3 class="text-xl font-bold mb-2 text-indigo-400">TOP 5 LONGEST PLAYED</h3>
+                    <div id="highScoresList" class="text-sm text-left mx-auto w-4/5">
+                        <p class="text-gray-400">Loading scores...</p>
+                    </div>
+                </div>
+
                 <button id="startButton" class="mt-8 px-8 py-4 bg-indigo-600 text-white font-bold text-xl rounded-lg shadow-2xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105">
                     Start the Fever!
                 </button>
@@ -136,6 +246,7 @@
         </div>
     </div>
 
+    <!-- Main Game Logic Script (Standard Script) -->
     <script>
         // --- Game Variables (Fixed to Mobile Screen Size) ---
         let CANVAS_WIDTH = 450; 
@@ -144,7 +255,7 @@
         // --- Fixed Constants ---
         const BALL_RADIUS = 4;
         
-        const BRICK_ROW_COUNT = 50; // Max rows, though only visible rows are used for placement
+        const BRICK_ROW_COUNT = 50; 
         const BRICK_COLUMN_COUNT = 16; 
         const BRICK_HEIGHT = 10; 
         
@@ -181,10 +292,10 @@
         
         const MEGA_BALL_RADIUS_MULTIPLIER = 10;
         const MEGA_BALL_DURATION_MS = 5000;
-        const FEVER_DURATION_MS = 10000; // 10 seconds for FEVER!
+        const FEVER_DURATION_MS = 10000; 
 
         const EXPLOSION_LIFE = 6; 
-        const DISAPPEAR_LIFE = 10; // Life for the ball disappearance effect
+        const DISAPPEAR_LIFE = 10; 
 
         // Derived constant 
         let BRICK_WIDTH = 0; 
@@ -196,7 +307,7 @@
         
         const BRICK_COLORS = {
             8: '#ffffff', // White (Regeneration)
-            7: '#FF0000', // Bright Red (Bomb) - Will be glowing
+            7: '#FF0000', // Bright Red (Bomb)
             6: '#ec4899', // Pink-500 (5 hits)
             5: '#9333ea', // Purple-600 (4 hits)
             4: '#3b82f6', // Blue-500 (Multiplier)
@@ -223,6 +334,7 @@
         let startTime = 0; 
         let elapsedTime = 0; 
         let timerIntervalId = null; 
+        let isAuthReady = false;
         
         let isBrickAnimating = false;
         let nextBrickIndexToReveal = 0; 
@@ -250,6 +362,10 @@
         const finalDifficulty = document.getElementById('finalDifficulty'); 
         const timerDisplay = document.getElementById('timerDisplay'); 
         const difficultyDisplay = document.getElementById('difficultyDisplay'); 
+        const highScoresList = document.getElementById('highScoresList');
+        const nicknameInputSection = document.getElementById('nicknameInputSection');
+        const nicknameInput = document.getElementById('nicknameInput');
+        const submitNicknameButton = document.getElementById('submitNicknameButton');
 
 
         // --- Utility Functions ---
@@ -264,6 +380,45 @@
             return `${hours}:${minutes}:${seconds}:${milliseconds}`;
         }
         
+        /**
+         * Renders the high scores list on the splash screen.
+         * @param {Array} scores - List of score objects.
+         */
+        function renderHighScores(scores) {
+            if (!scores || scores.length === 0) {
+                highScoresList.innerHTML = '<p class="text-gray-400">No scores recorded yet!</p>';
+                return;
+            }
+
+            highScoresList.innerHTML = '';
+            const list = document.createElement('ol');
+            list.className = 'space-y-1';
+
+            scores.forEach((scoreData, index) => {
+                const timeStr = formatTime(scoreData.timePlayedMs);
+                const listItem = document.createElement('li');
+                listItem.className = 'flex justify-between items-center';
+                listItem.innerHTML = `
+                    <span class="font-bold text-indigo-300 mr-2">${index + 1}.</span>
+                    <span class="flex-grow truncate text-yellow-300">${scoreData.nickname || 'Anon'}</span>
+                    <span class="text-xs font-mono text-gray-300 ml-2">${timeStr}</span>
+                `;
+                list.appendChild(listItem);
+            });
+
+            highScoresList.appendChild(list);
+        }
+
+        async function loadHighScores() {
+            // Check if Firebase functions are available and auth is ready
+            if (isAuthReady && window.fetchHighScores) {
+                const scores = await window.fetchHighScores();
+                renderHighScores(scores);
+            } else {
+                 highScoresList.innerHTML = '<p class="text-red-400">High score system loading...</p>';
+            }
+        }
+
         function getCurrentDifficulty(elapsedMs) {
             for (const tier of DIFFICULTY_TIERS) {
                 if (elapsedMs < tier.maxTimeMs) {
@@ -326,8 +481,6 @@
             upgradeCapacityButton.disabled = !(score >= BALL_CAPACITY_COST && gameRunning);
             megaBallButton.disabled = !(score >= MEGA_BALL_COST && gameRunning);
             startButton.disabled = gameRunning;
-            
-            // Start button logic moved to the Splash/Game Over screen buttons
         }
 
         function setFixedCanvasSize() {
@@ -448,26 +601,48 @@
         }
 
         // --- Initialization ---
-        window.onload = function() {
+        
+        /**
+         * Main initialization function, executed after the window and all modules are loaded.
+         */
+        async function init() {
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
             
             setFixedCanvasSize(); 
 
+            // Wait for Firebase auth to complete before loading high scores
+            if (window.authenticateUser) {
+                await window.authenticateUser();
+                isAuthReady = true;
+                await loadHighScores();
+            } else {
+                isAuthReady = false;
+                highScoresList.innerHTML = '<p class="text-red-400">High score system unavailable (Auth failed).</p>';
+            }
+
             startButton.addEventListener('click', initializeGame); 
-            restartButton.addEventListener('click', initializeGame); 
+            restartButton.addEventListener('click', () => {
+                nicknameInputSection.classList.add('hidden');
+                restartButton.classList.add('hidden');
+                initializeGame();
+            }); 
             increaseSpeedButton.addEventListener('click', () => changeSpeed(SPEED_FACTOR));
             decreaseSpeedButton.addEventListener('click', () => changeSpeed(1 / SPEED_FACTOR));
             upgradeCapacityButton.addEventListener('click', upgradeMaxBalls);
             megaBallButton.addEventListener('click', buyMegaBall);
             feverButton.addEventListener('click', buyFever); 
+            submitNicknameButton.addEventListener('click', handleSubmitNickname);
             
             resetGame(true); // Initial reset
             draw();
             updateBallCountDisplay(); 
             updateScoreDisplay(); 
             checkUpgradeButtonState(); 
-        };
+        }
+
+        // Fix: Use window.onload to ensure all scripts (including the module script) are loaded
+        window.onload = init;
         
         function upgradeMaxBalls() {
             if (score >= BALL_CAPACITY_COST) {
@@ -488,9 +663,6 @@
             }
         }
         
-        /**
-         * New function to activate FEVER! mode.
-         */
         function buyFever() {
             if (score >= FEVER_COST && gameRunning && !isFeverActive) {
                 score -= FEVER_COST;
@@ -517,7 +689,7 @@
             balls = [];
             explosions = []; 
             regenWaves = [];
-            disappearingBalls = []; // Reset disappearance array
+            disappearingBalls = []; 
             score = 0; 
             isFeverActive = false; // Reset fever
             feverEndTime = 0; 
@@ -525,6 +697,9 @@
             
             if (isInitial) {
                 splashScreen.classList.remove('hidden');
+                statusMessage.classList.add('hidden');
+            } else {
+                splashScreen.classList.add('hidden');
                 statusMessage.classList.add('hidden');
             }
             
@@ -543,6 +718,8 @@
             difficultyDisplay.textContent = `Level: Starting`;
             difficultyDisplay.className = `text-sm font-mono font-semibold text-gray-400`;
             finalDifficulty.textContent = ''; 
+            
+            updateScoreDisplay();
 
             generateBricks();
         }
@@ -576,16 +753,13 @@
                 cancelAnimationFrame(animationFrameId);
             }
             
-            // If the splash screen is visible or the game is over, reset everything
-            if (!gameRunning || statusMessage.classList.contains('hidden')) {
-                resetGame(false); // Reset but don't show the splash screen
-                createNewBall(); 
-                startTime = Date.now(); 
-                
-                if (timerIntervalId) clearInterval(timerIntervalId);
-                timerIntervalId = setInterval(updateTimerDisplay, 100); 
-                updateTimerDisplay(); 
-            }
+            resetGame(false); 
+            createNewBall(); 
+            startTime = Date.now(); 
+            
+            if (timerIntervalId) clearInterval(timerIntervalId);
+            timerIntervalId = setInterval(updateTimerDisplay, 100); 
+            updateTimerDisplay(); 
             
             gameRunning = true;
             statusMessage.classList.add('hidden');
@@ -747,7 +921,7 @@
                                             y: ball.y,
                                             dx: -ball.dx, 
                                             dy: -ball.dy,
-                                            radius: ball.radius, // Keep the current radius (might be Fever size)
+                                            radius: ball.radius, 
                                             isMega: false,
                                             expirationTime: 0,
                                         };
@@ -813,6 +987,9 @@
             }
         }
 
+        /**
+         * Initiates the game over sequence and shows the nickname input if needed.
+         */
         function endGame(title, text) {
             gameRunning = false;
             isBrickAnimating = false;
@@ -850,8 +1027,39 @@
             messageText.textContent = text;
             
             statusMessage.classList.remove('hidden');
-            
             checkUpgradeButtonState(); 
+            
+            // Show nickname input if auth is ready
+            if (isAuthReady && elapsedTime > 0) {
+                nicknameInputSection.classList.remove('hidden');
+                restartButton.classList.add('hidden');
+                nicknameInput.value = ''; // Clear input
+            } else {
+                nicknameInputSection.classList.add('hidden');
+                restartButton.classList.remove('hidden');
+            }
+        }
+        
+        /**
+         * Handles the nickname submission after game over.
+         */
+        async function handleSubmitNickname() {
+            if (!isAuthReady || !window.submitHighScore) return;
+
+            const nickname = nicknameInput.value.trim() || 'Anonymous Player';
+            
+            // Disable button to prevent spamming
+            submitNicknameButton.disabled = true;
+            submitNicknameButton.textContent = 'Submitting...';
+
+            await window.submitHighScore(nickname, score, elapsedTime);
+
+            // Hide input, show restart button, and reload scores
+            nicknameInputSection.classList.add('hidden');
+            restartButton.classList.remove('hidden');
+            restartButton.textContent = 'Play Again (Scores Updated)';
+            
+            await loadHighScores(); // Reload high scores to show the new one
         }
 
 
@@ -879,9 +1087,9 @@
                 const brick = bricks[i];
                 if (brick.level > 0) {
                     
-                    if (brick.level === BOMB_LEVEL) { 
-                        // Glowing effect for the bomb obstacle
-                        ctx.shadowColor = '#FF0000';
+                    if (brick.level === BOMB_LEVEL || brick.level === REGEN_LEVEL) { 
+                        // Glowing effect for Bomb (Red) and Regen (White)
+                        ctx.shadowColor = brick.level === BOMB_LEVEL ? '#FF0000' : '#ffffff';
                         ctx.shadowBlur = 15;
                     } else {
                         ctx.shadowBlur = 0; 
