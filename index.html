@@ -132,7 +132,7 @@
                     Start the bounce ball action by pressing the start button below.
                 </p>
                 <ul class="list-disc list-inside text-left mx-auto mb-6 space-y-2 text-md">
-                    <li class="text-red-400">The **glowing red obstacle (Level 7)** will destroy the ball!</li>
+                    <li class="text-red-400">The **glowing red obstacle (Level 7)** will **EXPLODE**, destroying the ball and itself!</li>
                     <li class="text-cyan-400">The **glowing tosca obstacle (Level 9)** will multiply the ball by 2!</li>
                     <li class="text-blue-400">The **blue obstacle (Level 4)** is a normal 4-hit destructive target.</li>
                     <li class="text-white">The **white obstacle (Level 8)** will rebuild the obstacles!</li>
@@ -162,8 +162,6 @@
         const MIN_BRICKS = 100;
         const MAX_BRICKS = 500; 
         
-        // Dynamic Multiplier ranges (MIN_MULTIPLIERS and MAX_MULTIPLIERS constants removed)
-
         // Difficulty Tiers: (Time in MS, Bomb Range, Multiplier Range, Tailwind Color Class)
         const DIFFICULTY_TIERS = [
             // Multiplier: 40-50 (Very Easy)
@@ -204,6 +202,7 @@
 
         const EXPLOSION_LIFE = 6; 
         const DISAPPEAR_LIFE = 10; 
+        const BOMB_BLOW_LIFE = 8; // Life for the new bomb blow animation
 
         // Derived constant 
         let BRICK_WIDTH = 0; 
@@ -243,6 +242,7 @@
         let explosions = []; 
         let regenWaves = []; 
         let disappearingBalls = []; 
+        let bombBlows = []; // NEW array for bomb explosion effects
         let score = 0; 
         let gameRunning = false;
         let animationFrameId = null;
@@ -259,7 +259,7 @@
         let isFeverActive = false;
         let feverEndTime = 0; 
         
-        // MEGA FEVER! State (NEW)
+        // MEGA FEVER! State
         let isMegaFeverActive = false;
         let megaFeverEndTime = 0; 
         
@@ -271,7 +271,7 @@
         const upgradeCapacityButton = document.getElementById('upgradeCapacityButton'); 
         const megaBallButton = document.getElementById('megaBallButton');
         const feverButton = document.getElementById('feverButton'); 
-        const megaFeverButton = document.getElementById('megaFeverButton'); // NEW
+        const megaFeverButton = document.getElementById('megaFeverButton'); 
         const shareButton = document.getElementById('shareButton');
         const statusMessage = document.getElementById('statusMessage');
         const splashScreen = document.getElementById('splashScreen'); 
@@ -522,7 +522,7 @@
             upgradeCapacityButton.addEventListener('click', upgradeMaxBalls);
             megaBallButton.addEventListener('click', buyMegaBall);
             feverButton.addEventListener('click', buyFever); 
-            megaFeverButton.addEventListener('click', buyMegaFever); // NEW
+            megaFeverButton.addEventListener('click', buyMegaFever); 
             shareButton.addEventListener('click', handleShareScore);
             
             resetGame(true); // Initial reset
@@ -608,6 +608,7 @@
             explosions = []; 
             regenWaves = [];
             disappearingBalls = []; 
+            bombBlows = []; // Reset bomb blows
             score = 0; 
             isFeverActive = false; 
             feverEndTime = 0; 
@@ -735,7 +736,8 @@
             updateExplosions(); 
             updateRegenWaves(); 
             updateDisappearingBalls(); 
-            
+            updateBombBlows(); // NEW: Update bomb blow animation
+
             animationFrameId = requestAnimationFrame(gameLoop);
         }
         
@@ -843,16 +845,24 @@
                             // --- Special Brick Logic ---
 
                             if (brick.level === BOMB_LEVEL) { 
-                                // IMMUNITY CHECK: Mega Balls, FEVER! balls, and MEGA FEVER! balls are immune
+                                // BOMB LOGIC REVISION: The bomb blows up, removes the ball, and removes itself.
                                 if (!ball.isMega && !isFeverActive && !isMegaFeverActive) { 
-                                    // Add growing red circle effect for the destruction
-                                    disappearingBalls.push({ x: ball.x, y: ball.y, radius: ball.radius, life: DISAPPEAR_LIFE });
+                                    // 1. Trigger Bomb Blow Animation (NEW)
+                                    const brickCenterX = brick.x + BRICK_WIDTH / 2;
+                                    const brickCenterY = brick.y + BRICK_HEIGHT / 2;
+                                    bombBlows.push({ x: brickCenterX, y: brickCenterY, life: BOMB_BLOW_LIFE, maxRadius: 40 });
 
+                                    // 2. Ball Loss Penalty and Removal
+                                    disappearingBalls.push({ x: ball.x, y: ball.y, radius: ball.radius, life: DISAPPEAR_LIFE });
                                     score -= BALL_LOSS_PENALTY; 
                                     balls.splice(i, 1);
-                                    i--; 
+                                    i--; // Decrement index since a ball was removed
+
+                                    // 3. Destroy Bomb Brick
+                                    brick.level = 0;
+                                    totalBricksCount--; // It's a destructive target
                                 } else {
-                                    // Ball was immune, just destroy the bomb brick
+                                    // Ball was immune (Mega/Fever/MegaFever), just destroy the bomb brick
                                     brick.level = 0;
                                     totalBricksCount--;
                                 }
@@ -934,6 +944,24 @@
                 
                 if (dBall.life <= 0) {
                     disappearingBalls.splice(i, 1);
+                }
+            }
+        }
+
+        /**
+         * NEW: Updates the bomb blow animation.
+         */
+        function updateBombBlows() {
+             for (let i = bombBlows.length - 1; i >= 0; i--) {
+                const blow = bombBlows[i];
+                blow.life--;
+                
+                // Increase radius based on remaining life
+                const growthFactor = 1 - (blow.life / BOMB_BLOW_LIFE); // 0 to 1
+                blow.radius = blow.maxRadius * growthFactor;
+                
+                if (blow.life <= 0) {
+                    bombBlows.splice(i, 1);
                 }
             }
         }
@@ -1176,6 +1204,27 @@
             });
         }
         
+        /**
+         * NEW: Draws the bright red circle bomb blow animation.
+         */
+        function drawBombBlows() {
+            bombBlows.forEach(blow => {
+                const opacity = blow.life / BOMB_BLOW_LIFE;
+                
+                ctx.beginPath();
+                ctx.arc(blow.x, blow.y, blow.radius, 0, Math.PI * 2);
+                
+                // Bright red circle, fading out, with a glow
+                ctx.fillStyle = `rgba(255, 0, 0, ${opacity})`; 
+                ctx.shadowColor = '#FF0000';
+                ctx.shadowBlur = 15 * opacity;
+                
+                ctx.fill();
+                ctx.closePath();
+                ctx.shadowBlur = 0;
+            });
+        }
+
         function drawRegenWaves() {
             regenWaves.forEach(wave => {
                 ctx.beginPath();
@@ -1197,6 +1246,7 @@
             
             drawRegenWaves(); 
             drawBricks();
+            drawBombBlows(); // Draw bomb blow effect behind the balls
             balls.forEach(drawBall); 
             drawExplosions(); 
             drawDisappearingBalls(); 
