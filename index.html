@@ -61,98 +61,6 @@
     </style>
 </head>
 <body class="p-4 md:p-8">
-    <!-- Firebase Imports (Module Script) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, signInAnonymously, signInWithCustomToken, setPersistence, browserSessionPersistence 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, collection, query, orderBy, limit, getDocs, addDoc, setLogLevel
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
-        // Expose Firebase services globally for use in the standard script below
-        window.firebaseApp = initializeApp(firebaseConfig);
-        window.db = getFirestore(window.firebaseApp);
-        window.auth = getAuth(window.firebaseApp);
-
-        // Set logging for debugging
-        setLogLevel('error');
-        
-        // Public Collection Path for High Scores
-        window.HIGH_SCORES_PATH = `artifacts/${appId}/public/data/highscores`;
-
-        /**
-         * Authenticates the user using the provided token or anonymously.
-         */
-        window.authenticateUser = async function() {
-            try {
-                // Ensure persistence is set to session (useful for temporary environment)
-                await setPersistence(window.auth, browserSessionPersistence);
-                
-                if (initialAuthToken) {
-                    await signInWithCustomToken(window.auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(window.auth);
-                }
-                console.log("Firebase Auth successful. UID:", window.auth.currentUser?.uid);
-                return window.auth.currentUser;
-            } catch (error) {
-                console.error("Firebase Auth failed:", error);
-                // Return null or throw error if auth is critical
-                return null;
-            }
-        }
-        
-        /**
-         * Fetches the top 5 high scores sorted by time played (longest).
-         * @returns {Promise<Array>} List of high score objects.
-         */
-        window.fetchHighScores = async function() {
-            try {
-                const q = query(
-                    collection(window.db, window.HIGH_SCORES_PATH),
-                    // IMPORTANT: Sorting by 'timePlayedMs' desc (longest time played)
-                    orderBy('timePlayedMs', 'desc'), 
-                    limit(5)
-                );
-                const querySnapshot = await getDocs(q);
-                const scores = [];
-                querySnapshot.forEach((doc) => {
-                    scores.push({ id: doc.id, ...doc.data() });
-                });
-                return scores;
-            } catch (error) {
-                console.error("Error fetching high scores:", error);
-                return [];
-            }
-        }
-
-        /**
-         * Submits a new high score entry.
-         * @param {string} nickname - Player's chosen nickname.
-         * @param {number} finalScore - The final game score.
-         * @param {number} timePlayedMs - The total time played in milliseconds.
-         */
-        window.submitHighScore = async function(nickname, finalScore, timePlayedMs) {
-            try {
-                await addDoc(collection(window.db, window.HIGH_SCORES_PATH), {
-                    nickname: nickname,
-                    score: finalScore,
-                    timePlayedMs: timePlayedMs,
-                    date: Date.now()
-                });
-                console.log("High score submitted successfully.");
-            } catch (error) {
-                console.error("Error submitting high score:", error);
-            }
-        }
-    </script>
     
     <div id="game-container" class="mt-8 relative">
         <h1 class="text-3xl font-bold text-white mb-6 p-4 text-center">BOUNCE BALL FEVER!</h1>
@@ -193,28 +101,23 @@
             </button>
         </div>
         
-        <!-- GAME OVER / Nickname Submission / Status Message Box -->
+        <!-- GAME OVER / Status Message Box -->
         <div id="statusMessage" class="overlay-box hidden">
             <div class="max-w-xs md:max-w-md">
                 <h2 class="text-3xl font-bold mb-4" id="messageTitle"></h2>
                 <p class="text-xl mb-4" id="messageText"></p>
                 
-                <!-- Nickname Input Section (Hidden initially) -->
-                <div id="nicknameInputSection" class="hidden my-4 p-4 bg-gray-700 rounded-lg">
-                    <p class="mb-3 text-lg font-semibold">Enter your nickname for the leaderboard!</p>
-                    <input type="text" id="nicknameInput" maxlength="15" placeholder="Nickname (max 15 chars)" 
-                           class="w-full p-2 rounded text-gray-900 bg-gray-100 placeholder-gray-500 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <button id="submitNicknameButton" class="mt-4 px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-xl hover:bg-green-700 transition duration-300">
-                        Submit Score
-                    </button>
-                </div>
-                
                 <p class="text-lg font-mono mt-4 text-green-300" id="timeDuration">Duration: 00:00:00:00</p> 
                 <p class="text-lg font-mono mt-2 text-gray-400" id="finalDifficulty"></p>
 
-                <button id="restartButton" class="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-xl hover:bg-indigo-700 transition duration-300 hidden">
-                    Play Again
-                </button>
+                <div class="mt-6 flex flex-col gap-3">
+                    <button id="shareButton" class="px-6 py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-xl hover:bg-yellow-600 transition duration-300">
+                        Share Score!
+                    </button>
+                    <button id="restartButton" class="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-xl hover:bg-indigo-700 transition duration-300">
+                        Play Again
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -232,13 +135,6 @@
                     <li class="text-yellow-400">Activate **FEVER!** for temporary power.</li>
                 </ul>
                 
-                <div class="text-center mt-6 p-3 bg-gray-700 rounded-lg">
-                    <h3 class="text-xl font-bold mb-2 text-indigo-400">TOP 5 LONGEST PLAYED</h3>
-                    <div id="highScoresList" class="text-sm text-left mx-auto w-4/5">
-                        <p class="text-gray-400">Loading scores...</p>
-                    </div>
-                </div>
-
                 <button id="startButton" class="mt-8 px-8 py-4 bg-indigo-600 text-white font-bold text-xl rounded-lg shadow-2xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105">
                     Start the Fever!
                 </button>
@@ -250,7 +146,7 @@
     <script>
         // --- Game Variables (Fixed to Mobile Screen Size) ---
         let CANVAS_WIDTH = 450; 
-        let CANVAS_HEIGHT = 375; // ADJUSTED to half of original size (750 / 2 = 375)
+        let CANVAS_HEIGHT = 375; 
         
         // --- Fixed Constants ---
         const BALL_RADIUS = 4;
@@ -332,9 +228,8 @@
         let animationFrameId = null;
         let totalBricksCount = 0; 
         let startTime = 0; 
-        let elapsedTime = 0; 
+        let elapsedTime = 0; // Stores final elapsed time in MS
         let timerIntervalId = null; 
-        let isAuthReady = false;
         
         let isBrickAnimating = false;
         let nextBrickIndexToReveal = 0; 
@@ -352,6 +247,7 @@
         const upgradeCapacityButton = document.getElementById('upgradeCapacityButton'); 
         const megaBallButton = document.getElementById('megaBallButton');
         const feverButton = document.getElementById('feverButton'); 
+        const shareButton = document.getElementById('shareButton');
         const statusMessage = document.getElementById('statusMessage');
         const splashScreen = document.getElementById('splashScreen'); 
         const messageTitle = document.getElementById('messageTitle');
@@ -362,11 +258,6 @@
         const finalDifficulty = document.getElementById('finalDifficulty'); 
         const timerDisplay = document.getElementById('timerDisplay'); 
         const difficultyDisplay = document.getElementById('difficultyDisplay'); 
-        const highScoresList = document.getElementById('highScoresList');
-        const nicknameInputSection = document.getElementById('nicknameInputSection');
-        const nicknameInput = document.getElementById('nicknameInput');
-        const submitNicknameButton = document.getElementById('submitNicknameButton');
-
 
         // --- Utility Functions ---
         
@@ -375,50 +266,11 @@
             const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
             const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
             const seconds = String(totalSeconds % 60).padStart(2, '0');
-            const milliseconds = String(Math.floor((ms % 1000) / 10)).padStart(2, '0');
+            const milliseconds = String(Math.floor((ms % 1000) / 100)).padStart(1, '0'); // Show 1 decimal place
 
-            return `${hours}:${minutes}:${seconds}:${milliseconds}`;
+            return `${hours}:${minutes}:${seconds}`; // Removed milliseconds for cleaner display/share
         }
         
-        /**
-         * Renders the high scores list on the splash screen.
-         * @param {Array} scores - List of score objects.
-         */
-        function renderHighScores(scores) {
-            if (!scores || scores.length === 0) {
-                highScoresList.innerHTML = '<p class="text-gray-400">No scores recorded yet!</p>';
-                return;
-            }
-
-            highScoresList.innerHTML = '';
-            const list = document.createElement('ol');
-            list.className = 'space-y-1';
-
-            scores.forEach((scoreData, index) => {
-                const timeStr = formatTime(scoreData.timePlayedMs);
-                const listItem = document.createElement('li');
-                listItem.className = 'flex justify-between items-center';
-                listItem.innerHTML = `
-                    <span class="font-bold text-indigo-300 mr-2">${index + 1}.</span>
-                    <span class="flex-grow truncate text-yellow-300">${scoreData.nickname || 'Anon'}</span>
-                    <span class="text-xs font-mono text-gray-300 ml-2">${timeStr}</span>
-                `;
-                list.appendChild(listItem);
-            });
-
-            highScoresList.appendChild(list);
-        }
-
-        async function loadHighScores() {
-            // Check if Firebase functions are available and auth is ready
-            if (isAuthReady && window.fetchHighScores) {
-                const scores = await window.fetchHighScores();
-                renderHighScores(scores);
-            } else {
-                 highScoresList.innerHTML = '<p class="text-red-400">High score system loading...</p>';
-            }
-        }
-
         function getCurrentDifficulty(elapsedMs) {
             for (const tier of DIFFICULTY_TIERS) {
                 if (elapsedMs < tier.maxTimeMs) {
@@ -441,11 +293,11 @@
 
         function updateTimerDisplay() {
             if (gameRunning && startTime > 0) {
-                elapsedTime = Date.now() - startTime;
-                const formattedTime = formatTime(elapsedTime);
+                const currentElapsed = Date.now() - startTime;
+                const formattedTime = formatTime(currentElapsed);
                 timerDisplay.textContent = `Time: ${formattedTime}`;
                 
-                const difficulty = getCurrentDifficulty(elapsedTime);
+                const difficulty = getCurrentDifficulty(currentElapsed);
                 difficultyDisplay.textContent = `Level: ${difficulty.name}`;
                 difficultyDisplay.className = `text-sm font-mono font-semibold ${difficulty.color}`; 
             }
@@ -466,7 +318,8 @@
             feverButton.disabled = !isFeverPossible;
             
             if (isFeverActive) {
-                feverButton.textContent = `FEVER! (Active: ${Math.max(0, Math.ceil((feverEndTime - Date.now()) / 1000))}s)`;
+                const remainingTime = Math.max(0, Math.ceil((feverEndTime - Date.now()) / 1000));
+                feverButton.textContent = `FEVER! (Active: ${remainingTime}s)`;
                 feverButton.classList.remove('bg-yellow-500', 'hover:bg-yellow-600', 'transform', 'hover:scale-105');
                 feverButton.classList.add('bg-gray-500');
             } else {
@@ -602,37 +455,20 @@
 
         // --- Initialization ---
         
-        /**
-         * Main initialization function, executed after the window and all modules are loaded.
-         */
-        async function init() {
+        function init() {
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
             
             setFixedCanvasSize(); 
 
-            // Wait for Firebase auth to complete before loading high scores
-            if (window.authenticateUser) {
-                await window.authenticateUser();
-                isAuthReady = true;
-                await loadHighScores();
-            } else {
-                isAuthReady = false;
-                highScoresList.innerHTML = '<p class="text-red-400">High score system unavailable (Auth failed).</p>';
-            }
-
             startButton.addEventListener('click', initializeGame); 
-            restartButton.addEventListener('click', () => {
-                nicknameInputSection.classList.add('hidden');
-                restartButton.classList.add('hidden');
-                initializeGame();
-            }); 
+            restartButton.addEventListener('click', initializeGame); 
             increaseSpeedButton.addEventListener('click', () => changeSpeed(SPEED_FACTOR));
             decreaseSpeedButton.addEventListener('click', () => changeSpeed(1 / SPEED_FACTOR));
             upgradeCapacityButton.addEventListener('click', upgradeMaxBalls);
             megaBallButton.addEventListener('click', buyMegaBall);
             feverButton.addEventListener('click', buyFever); 
-            submitNicknameButton.addEventListener('click', handleSubmitNickname);
+            shareButton.addEventListener('click', handleShareScore);
             
             resetGame(true); // Initial reset
             draw();
@@ -641,7 +477,6 @@
             checkUpgradeButtonState(); 
         }
 
-        // Fix: Use window.onload to ensure all scripts (including the module script) are loaded
         window.onload = init;
         
         function upgradeMaxBalls() {
@@ -774,7 +609,6 @@
             // Check for FEVER expiration
             if (isFeverActive && Date.now() >= feverEndTime) {
                 isFeverActive = false;
-                feverButton.textContent = "FEVER! (Cost: 3000)";
                 
                 // Reset ball sizes
                 balls.forEach(ball => {
@@ -988,7 +822,7 @@
         }
 
         /**
-         * Initiates the game over sequence and shows the nickname input if needed.
+         * Initiates the game over sequence.
          */
         function endGame(title, text) {
             gameRunning = false;
@@ -1007,6 +841,7 @@
                 timerIntervalId = null;
             }
 
+            // Capture final elapsed time
             if (startTime > 0) {
                 elapsedTime = Date.now() - startTime;
                 const formattedTime = formatTime(elapsedTime);
@@ -1016,7 +851,8 @@
                 finalDifficulty.textContent = `Difficulty Reached: ${finalDifficultyTier.name}`;
                 finalDifficulty.className = `text-lg font-mono mt-2 ${finalDifficultyTier.color}`; 
             } else {
-                timeDuration.textContent = `Duration: 00:00:00:00`;
+                elapsedTime = 0;
+                timeDuration.textContent = `Duration: 00:00:00`;
                 finalDifficulty.textContent = `Difficulty Reached: N/A`;
                 finalDifficulty.className = `text-lg font-mono mt-2 text-gray-400`;
             }
@@ -1028,40 +864,32 @@
             
             statusMessage.classList.remove('hidden');
             checkUpgradeButtonState(); 
-            
-            // Show nickname input if auth is ready
-            if (isAuthReady && elapsedTime > 0) {
-                nicknameInputSection.classList.remove('hidden');
-                restartButton.classList.add('hidden');
-                nicknameInput.value = ''; // Clear input
-            } else {
-                nicknameInputSection.classList.add('hidden');
-                restartButton.classList.remove('hidden');
-            }
         }
         
         /**
-         * Handles the nickname submission after game over.
+         * Generates the sharing text and copies it to the clipboard.
          */
-        async function handleSubmitNickname() {
-            if (!isAuthReady || !window.submitHighScore) return;
+        function handleShareScore() {
+            const timeStr = formatTime(elapsedTime);
+            const shareUrl = "https://dagp-hash.github.io/bounceballfever/";
+            const shareText = `I've played The Bounce Balls Fever for ${timeStr}, can you beat mine? Play at: ${shareUrl}`;
 
-            const nickname = nicknameInput.value.trim() || 'Anonymous Player';
+            // Use temporary textarea for copying text to clipboard
+            const tempTextarea = document.createElement("textarea");
+            tempTextarea.value = shareText;
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
             
-            // Disable button to prevent spamming
-            submitNicknameButton.disabled = true;
-            submitNicknameButton.textContent = 'Submitting...';
-
-            await window.submitHighScore(nickname, score, elapsedTime);
-
-            // Hide input, show restart button, and reload scores
-            nicknameInputSection.classList.add('hidden');
-            restartButton.classList.remove('hidden');
-            restartButton.textContent = 'Play Again (Scores Updated)';
+            try {
+                document.execCommand('copy');
+                alert("Score copied to clipboard!"); // Use simple alert for confirmation
+            } catch (err) {
+                console.error('Could not copy text: ', err);
+                alert("Failed to copy. Please manually copy this text:\n" + shareText);
+            }
             
-            await loadHighScores(); // Reload high scores to show the new one
+            document.body.removeChild(tempTextarea);
         }
-
 
         // --- Drawing Functions ---
 
