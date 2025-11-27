@@ -84,10 +84,10 @@
         <div class="mt-6 flex flex-wrap gap-3 p-4 w-full justify-center">
             <!-- FEVER! Button added here -->
             <button id="feverButton" class="px-4 py-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-lg hover:bg-yellow-600 transition duration-300 transform hover:scale-105" disabled>
-                FEVER! (Cost: 3000)
+                FEVER! (3000 pts)
             </button>
             <button id="megaFeverButton" class="px-4 py-3 bg-yellow-600 text-white font-bold rounded-lg shadow-md hover:bg-yellow-700 transition duration-300 transform hover:scale-105" disabled>
-                MEGA FEVER! (Cost: 5000)
+                MEGA FEVER! (5000 pts)
             </button>
             <button id="increaseSpeedButton" class="px-4 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300" disabled>
                 + Speed
@@ -97,10 +97,10 @@
             </button>
             <!-- UPGRADE BUTTONS -->
             <button id="upgradeCapacityButton" class="px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-300" disabled>
-                +1 Max Balls (Cost: 1000)
+                +1 Max Balls (1000 pts)
             </button>
             <button id="megaBallButton" class="px-4 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-300" disabled>
-                Mega Ball (Cost: 2000)
+                Mega Ball (2000 pts)
             </button>
         </div>
         
@@ -132,11 +132,11 @@
                     Start the bounce ball action by pressing the start button below.
                 </p>
                 <ul class="list-disc list-inside text-left mx-auto mb-6 space-y-2 text-md">
-                    <li class="text-red-400">The **glowing red obstacle (Level 7)** will **EXPLODE**, destroying the ball and itself!</li>
-                    <li class="text-cyan-400">The **glowing tosca obstacle (Level 9)** will multiply the ball by 2!</li>
-                    <li class="text-blue-400">The **blue obstacle (Level 4)** is a normal 4-hit destructive target.</li>
-                    <li class="text-white">The **white obstacle (Level 8)** will rebuild the obstacles!</li>
-                    <li class="text-yellow-400">Activate **FEVER!** or **MEGA FEVER!** for temporary power and bomb immunity.</li>
+                    <li class="text-red-400">The Glowing Red obstacle will EXPLODE, destroying the ball and itself!</li>
+                    <li class="text-cyan-400">The Glowing Tosca obstacle will multiply the ball by 2!</li>
+                    <li class="text-blue-400">The Blue obstacle is a normal 4-hit destructive target.</li>
+                    <li class="text-white">The White obstacle will rebuild the obstacles!</li>
+                    <li class="text-yellow-400">Activate FEVER! or MEGA FEVER! for temporary power and bomb immunity.</li>
                 </ul>
                 
                 <button id="startButton" class="mt-8 px-8 py-4 bg-indigo-600 text-white font-bold text-xl rounded-lg shadow-2xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105">
@@ -785,11 +785,11 @@
                 return true;
             }
             
-            if (totalBricksCount <= 0 && !isBrickAnimating) {
+            /*if (totalBricksCount <= 0 && !isBrickAnimating) {
                 endGame("VICTORY!", `All destructive bricks cleared! Final Score: ${score}`);
                 return true;
             }
-            return false;
+            return false;*/
         }
 
         function updateSimulation() {
